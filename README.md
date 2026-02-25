@@ -4,6 +4,7 @@ This library (CasualSDRO) is an open source project that is based on our paper:&
 
 **_Contextual Distributionally Robust Optimization with Causal and Continuous Structure: An Interpretable and Tractable Approach_** (<https://arxiv.org/abs/2601.11016>).&#x20;
 
+Citation: 
 ```latex
 @article{zhang2026contextual,
   title={Contextual Distributionally Robust Optimization with Causal and Continuous Structure: An Interpretable and Tractable Approach},
@@ -171,4 +172,4 @@ The resulting boxplots will be saved at folder **Outputs_Visualization/Newsvendo
 
 ## Reference&#x20;
 
-Yang, J., Zhang, L., Chen, N., Gao, R., & Hu, M. (2022). Decision-making with side information: A causal transport robust approach.Ã‚Â *Optimization Online*.
+Yang, J., Zhang, L., Chen, N., Gao, R., & Hu, M. (2022). Decision-making with side information: A causal transport robust approach. *Optimization Online*.
