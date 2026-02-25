@@ -1,0 +1,11 @@
+torch
+cvxpy
+numpy  
+pandas
+matplotlib
+seaborn
+openpyxl
+tqdm
+scipy
+
+Gurobi version == 12.0.1s
