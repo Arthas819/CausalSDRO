@@ -83,7 +83,7 @@ These programs will be called by the main programs.
 | **KLDRO_Trainer.py**          | Solve KL-DRO by SGD.                                                                        |
 | **Compared_DRO_Optimizer.py** | Solve all DRO models.                                                                       |
 | **Portfolio_Optimizer.py**    | Solve all **portfolio** baselines and Causal-SDRO model.                                    |
-| \*\*Gurobi_Optimizer.py \*\*  | Solve the inner problem of **inventory substitute problem** by Gurobi solver with gradient. |
+| **Gurobi_Optimizer.py**  | Solve the inner problem of **inventory substitute problem** by Gurobi solver with gradient. |
 
 ### 2.3 In Folder "**Outputs**"
 
