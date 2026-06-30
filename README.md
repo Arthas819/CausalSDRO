@@ -80,7 +80,7 @@ These programs will be called by the main programs.
 | **ERM_Trainer.py**            | Solve ERM by SAA.                                                                           |
 | **CSDRO_Trainer.py**          | Solve Causal-SDRO by SCSC.                                                                  |
 | **SDRO_Trainer.py**           | Solve SDRO by SCSC.                                                                         |
-| **CWDRO_Trainer.py**          | Solve Causal-WDRO by RT-MLMC (Yang et al., 2022).                                           |
+| **CWDRO_Trainer.py**          | Solve Causal-WDRO by RT-MLMC (Yang et al., 2026).                                           |
 | **KLDRO_Trainer.py**          | Solve KL-DRO by SGD.                                                                        |
 | **Compared_DRO_Optimizer.py** | Solve all DRO models.                                                                       |
 | **Portfolio_Optimizer.py**    | Solve all **portfolio** baselines and Causal-SDRO model.                                    |
@@ -172,4 +172,4 @@ The resulting boxplots will be saved at folder **Outputs_Visualization/Newsvendo
 
 ## Reference&#x20;
 
-Yang, J., Zhang, L., Chen, N., Gao, R., & Hu, M. (2022). Decision-making with side information: A causal transport robust approach. *Optimization Online*.
+Yang J, Zhang L, Chen N, et al. Decision Making with Side Information: A Causal Transport Robust Approach[J]. *Operations Research*, 2026.
