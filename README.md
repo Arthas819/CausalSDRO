@@ -1,4 +1,4 @@
-# Contextual Distributionally Robust Optimization with Causal and Continuous Structure: An Interpretable and Tractable Approach
+# Contextual Distributionally Robust Optimization with Causal and Continuous Structure
 
 This library (CasualSDRO) is an open source project that is based on our paper:&#x20;
 
