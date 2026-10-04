@@ -7,7 +7,7 @@ This library (CasualSDRO) is an open source project that is based on our paper:&
 Citation: 
 ```latex
 @article{zhang2026contextual,
-  title={Contextual Distributionally Robust Optimization with Causal and Continuous Structure: An Interpretable and Tractable Approach},
+  title={Contextual Distributionally Robust Optimization with Causal and Continuous Structure},
   author={Zhang, Fenglin and Wang, Jie},
   journal={arXiv preprint arXiv:2601.11016},
   year={2026}
