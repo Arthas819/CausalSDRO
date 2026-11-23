@@ -8,4 +8,4 @@ openpyxl
 tqdm
 scipy
 
-Gurobi version == 12.0.1s
+COPT version == 8.0.7s
