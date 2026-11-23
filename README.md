@@ -2,7 +2,7 @@
 
 This library (CasualSDRO) is an open source project that is based on our paper:&#x20;
 
-**_Contextual Distributionally Robust Optimization with Causal and Continuous Structure: An Interpretable and Tractable Approach_** (<https://arxiv.org/abs/2601.11016>).&#x20;
+**_Contextual Distributionally Robust Optimization with Causal and Continuous Structure_** (<https://arxiv.org/abs/2601.11016>).&#x20;
 
 Citation: 
 ```latex
@@ -14,7 +14,7 @@ Citation:
 }
 ```
 
-The experiments are coded in Python 3.8 and conducted on a personal computer equipped with an Intel Core i9-13900HX CPU, 32 GB of RAM, and an Nvidia GeForce RTX 4060 GPU. All GPU computations are performed using PyTorch 2.0.1 (utilizing CUDA 11.8).&#x20;
+The experiments are coded in Python 3.8 and conducted on a personal computer equipped with an Intel Core i9-13900HX CPU, 32 GB of RAM, and an Nvidia GeForce RTX 4060 GPU. All GPU computations are performed using PyTorch 2.0.1 (utilizing CUDA 11.8). One of the state-of-the-art commercial solvers **COPT (version 8.0.7) in Python 3.8** are used and one can apply for a COPT license at <https://copt.shanshu.ai/copt>. &#x20;
 
 In the following, we introduce all folders and files, as well as their usage procedures.&#x20;
 
@@ -78,13 +78,13 @@ These programs will be called by the main programs.
 | **Files**                     | Descriptions                                                                                |
 | :---------------------------- | :------------------------------------------------------------------------------------------ |
 | **ERM_Trainer.py**            | Solve ERM by SAA.                                                                           |
-| **CSDRO_Trainer.py**          | Solve Causal-SDRO by SCSC.                                                                  |
+| **CSDRO_Trainer.py**          | Solve Causal-SDRO by the proposed CM-SCSC algorithm.                                                                  |
 | **SDRO_Trainer.py**           | Solve SDRO by SCSC.                                                                         |
 | **CWDRO_Trainer.py**          | Solve Causal-WDRO by RT-MLMC (Yang et al., 2026).                                           |
 | **KLDRO_Trainer.py**          | Solve KL-DRO by SGD.                                                                        |
 | **Compared_DRO_Optimizer.py** | Solve all DRO models.                                                                       |
 | **Portfolio_Optimizer.py**    | Solve all **portfolio** baselines and Causal-SDRO model.                                    |
-| **Gurobi_Optimizer.py**  | Solve the inner problem of **inventory substitute problem** by Gurobi solver with gradient. |
+| **COPT_Optimizer.py**  | Solve the inner problem of **inventory substitute problem** by COPT solver with gradient. |
 
 ### 2.3 In Folder "**Outputs**"
 
