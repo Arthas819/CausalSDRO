@@ -82,9 +82,10 @@ These programs will be called by the main programs.
 | **SDRO_Trainer.py**           | Solve SDRO by CM-SCSC.                                                                      |
 | **CWDRO_Trainer.py**          | Solve Causal-WDRO by RT-MLMC (Yang et al., 2026).                                           |
 | **KLDRO_Trainer.py**          | Solve KL-DRO by SGD.                                                                        |
+| **Smooth_Trainer.py**         | Solve smoothing baseline by SGD.                                                            |
 | **Compared_DRO_Optimizer.py** | Solve all DRO models.                                                                       |
 | **Portfolio_Optimizer.py**    | Solve all **portfolio** baselines and Causal-SDRO model.                                    |
-| **COPT_Optimizer.py**  | Solve the inner problem of **inventory substitute problem** by COPT solver with gradient. |
+| **COPT_Optimizer.py**         | Solve the inner problem of **inventory substitute problem** by COPT solver with gradient.   |
 
 ### 2.3 In Folder "**Outputs**"
 
