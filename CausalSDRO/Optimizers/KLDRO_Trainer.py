@@ -3,7 +3,7 @@
 """
 
 from tqdm import tqdm
-from CausalSDRO.Tools.Functions import *
+from Tools.Functions import *
 
 class KLDRO_Trainer:
     def __init__(self, model, train_loader, params, device, model_type):
@@ -19,12 +19,14 @@ class KLDRO_Trainer:
         self.train_loss_history = []
 
         # Optimizer
-        lr = 0.01
+        lr = getattr(params, 'LR_KLDRO', 0.01)
         weight_decay = 1e-4
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
         # self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
 
     def train_sgd(self, X_train, Y_train, pro_params):
+        if pro_params['problem_name'] == 'Inventory':
+            self.model.configure_inventory(pro_params)
 
         self.n_train = X_train.shape[0]
         self.d_x = X_train.shape[1]
@@ -111,12 +113,11 @@ class KLDRO_Trainer:
 
         elif self.pro_params['problem_name'] == 'Portfolio':
             with torch.no_grad():
-                z_decision, beta = parse_mv_output(z, self.d_z)
-                loss = portfolio_loss_mv(z_decision, Y_eval, beta, self.pro_params['eta'])
+                loss = get_loss(z, Y_eval, self.pro_params)
 
         elif self.pro_params['problem_name'] == 'Inventory':
             with torch.no_grad():
-                loss = DifferentiableGurobiSolver.apply(z, Y_eval, self.pro_params)
+                loss = get_loss(z, Y_eval, self.pro_params)
 
          # Return mean loss as a tensor
         return loss.mean()

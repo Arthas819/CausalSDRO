@@ -10,7 +10,24 @@ import torch.nn as nn
     Two-Layer Neural Network (2NN) Decision Rule, as a baseline
 '''
 
-class TNN(nn.Module):
+class InventoryBounds:
+    def configure_inventory(self, pro_params):
+        self.x_bound = pro_params.get('x_bound', 5.0)
+        self.z_bound = pro_params.get('z_bound', 30.0)
+        self.inventory = True
+        return self
+
+    def inventory_input(self, x):
+        return x.clamp(-self.x_bound, self.x_bound) if getattr(self, 'inventory', False) else x
+
+    def inventory_output(self, values):
+        if not getattr(self, 'inventory', False):
+            return values
+        positive = torch.nn.functional.softplus(values, beta=5)
+        return -self.z_bound * torch.expm1(-positive / self.z_bound)
+
+
+class TNN(InventoryBounds, nn.Module):
 
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(TNN, self).__init__()
@@ -25,8 +42,9 @@ class TNN(nn.Module):
         if x.dim() == 1:
             # add a new dimension
             x = x.unsqueeze(0)
+        x = self.inventory_input(x)
         x = self.activation(self.layer1(x))
-        x = self.layer2(x)
+        x = self.inventory_output(self.layer2(x))
         return x.squeeze(-1) if self.output_dim == 1 else x
 
 
@@ -34,7 +52,7 @@ class TNN(nn.Module):
     The proposed SRF decision rule.
 '''
 
-class SRF(nn.Module):
+class SRF(InventoryBounds, nn.Module):
 
     # For leaf nodes, they can output a single decision, or a linear transformation for input x
     # For each tree, we can decline the number of features or samples, to increase the diversity.
@@ -116,6 +134,7 @@ class SRF(nn.Module):
     def forward(self, x):
 
         # Inpupt shape: [batch_size, input_dim]
+        x = self.inventory_input(x)
         batch_size = x.shape[0]
 
         # Mask internal weights, feature_mask: [tree, input_dim] -> [tree, 1, input_dim]
@@ -160,7 +179,7 @@ class SRF(nn.Module):
         if self.Use_Linear_Leaf == False:
             # If we use constant leaves, just calculate the expectation
             # [batch_size, tree, leaf_nodes] * [tree, leaf_nodes, output_dim] -> [batch_size, tree, output_dim]
-            tree_outputs = torch.einsum('btl,tlo->bto', path_probs, self.leaf_nodes_pi)
+            tree_outputs = torch.einsum('btl,tlo->bto', path_probs, self.inventory_output(self.leaf_nodes_pi))
         else:
             # For linear leaves, first, mask
             effective_leaf_w = self.leaf_nodes_w * self.feature_mask.unsqueeze(1).unsqueeze(1)
@@ -170,7 +189,8 @@ class SRF(nn.Module):
             # Add bias, leaf_nodes_b -> [?, tree, leaves, output_dim]
             leaf_linear = leaf_affine + self.leaf_nodes_b.unsqueeze(0)
             # leaf_values: [batch_size, tree, leaves, output_dim]
-            leaf_values = self.ReLu(leaf_linear)
+            leaf_values = (self.inventory_output(leaf_linear) if getattr(self, 'inventory', False)
+                           else self.ReLu(leaf_linear))
 
             # path_probs -> [batch_size, tree, leaves, 1]
             # tree_outputs : [batch_size, tree, output_dim]

@@ -1,5 +1,5 @@
 """
-    This file visualizes all numerical results.
+    Visualize the DRO and smoothing comparisons.
 """
 
 import pandas as pd
@@ -7,30 +7,34 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.ticker as mtick
 import matplotlib.patches as mpatches
-import matplotlib.lines as mlines
 import os
+import math
+
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+output_formats = ('pdf', 'svg')
+smooth_nm_values = [5, 10]
+omega_values = [0.25, 0.5, 0.75, 1.0]
 
 # Basic settings
 problems = ['Portfolio']
 
-show_results = True
 show_dro_comparison = True
-
-# If show_results == True
-CUSTOM_COLORS = ["#E69F00", "#56B4E9", "#009E73", "#CC79A7", "#0072B2"]
+show_smooth_comparison = True
 
 # If show_dro_comparison == True
-# Select compared models in the boxplots
 Compared_DRO_models = ['P_1-Causal-SDRO', 'P_2-Causal-SDRO', 'P_1-SDRO', 'P_2-SDRO',
     'P_1-Causal-WDRO', 'P_2-Causal-WDRO', 'P_KL-DRO']
+Compared_Smooth_models = ['P_1-Causal-SDRO', 'P_2-Causal-SDRO', 'P_1-Smooth', 'P_2-Smooth']
+SMOOTH_HATCH_MAP = {model: '///' if 'Causal-SDRO' in model else ''
+                    for model in Compared_Smooth_models}
 
 CUSTOM_COLORS_DRO = [
     "#E69F00", "#56B4E9", "#009E73", "#F0E442",
-    "#0072B2", "#D55E00", "#CC79A7"
+    "#0072B2", "#D55E00", "#CC79A7", "#00B050", "#E7298A"
 ]
 ALL_DRO_MODELS = [
     'P_1-Causal-SDRO', 'P_2-Causal-SDRO', 'P_1-SDRO', 'P_2-SDRO',
-    'P_1-Causal-WDRO', 'P_2-Causal-WDRO', 'P_KL-DRO'
+    'P_1-Causal-WDRO', 'P_2-Causal-WDRO', 'P_KL-DRO', 'P_1-Smooth', 'P_2-Smooth'
 ]
 
 # Construct a mapping dict
@@ -43,165 +47,66 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 
-def prepare_data(df):
-
-    df_long = df.melt(id_vars=['norm', 'eta'],
-                      value_vars=['P_2NN', 'P_SRF'],
-                      var_name='Method_Raw',
-                      value_name='Performance')
-
-    def clean_name(name):
-        if '2NN' in str(name): return '2NN'
-        if 'SRF' in str(name): return 'SRF'
-        return name
-
-    df_long['Method'] = df_long['Method_Raw'].apply(clean_name)
-
-    df_long['Plot_Group'] = df_long.apply(lambda row: f"{row['Method']}_{row['eta']}", axis=1)
-
-    target_eta = sorted(df_long['eta'].unique())
-
-    return df_long, target_eta
-
-def Boxplot_2NN_and_SRF(df_pf, folder_path, file_name):
-
-    data, target_eta = prepare_data(df_pf)
-
-    data['Performance'] = data['Performance'] / 100.0
-
-    if len(target_eta) > len(CUSTOM_COLORS):
-        colors_to_use = CUSTOM_COLORS * 2
-    else:
-        colors_to_use = CUSTOM_COLORS
-
-    eta_colors = {eta: color for eta, color in zip(target_eta, colors_to_use)}
-
-    hue_order = []
-    palette_list = []
-
-    for eta in target_eta:
-        hue_order.append(f"2NN_{eta}")
-        palette_list.append(eta_colors[eta])
-        hue_order.append(f"SRF_{eta}")
-        palette_list.append(eta_colors[eta])
-
-    fig, ax = plt.subplots(figsize=(15, 7))
-
-    sns.boxplot(
-        data=data,
-        x='norm',
-        y='Performance',
-        hue='Plot_Group',
-        hue_order=hue_order,
-        palette=palette_list,
-        width=0.8,
-        linewidth=1.2,
-        fliersize=2,
-        ax=ax
-    )
-
-    box_patches = [p for p in ax.patches if isinstance(p, mpatches.PathPatch)]
-
-    box_patches.sort(key=lambda p: p.get_path().vertices[:, 0].mean())
-
-    group_size = 2 * len(target_eta)
-
-    for i, patch in enumerate(box_patches):
-        patch.set_edgecolor('black')
-        patch.set_linewidth(1.2)
-        patch.set_hatch(None)
-
-        intra_group_index = i % group_size
-
-        if intra_group_index % 2 == 0:
-            patch.set_linestyle('--')
-        else:
-            patch.set_linestyle('-')
-
-    mean_srf = data[data['Method'] == 'SRF']['Performance'].mean()
-    mean_2nn = data[data['Method'] == '2NN']['Performance'].mean()
-
-    line_srf_color = '#D55E00'
-    line_2nn_color = '#0072B2'
-
-    ax.axhline(y=mean_srf, color=line_srf_color, linestyle='--', linewidth=1.5, alpha=0.9)
-    ax.axhline(y=mean_2nn, color=line_2nn_color, linestyle='-.', linewidth=1.5, alpha=0.9)
-
-    ax.set_xlabel(r'$p$-Causal-SDRO', fontsize=16)
-    ax.set_ylabel('Out-of-sample Performance', fontsize=16)
-
-    norms = sorted(data['norm'].unique())
-    ax.set_xticklabels([f"$p={n}$" for n in norms])
-
-    ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0))
-    ax.tick_params(labelsize=13)
-
-    y_min, y_max = data['Performance'].min(), data['Performance'].max()
-    ax.set_ylim(-1, 1)
-
-    legend_handles = []
-
-    legend_handles.append(mpatches.Patch(visible=False, label=r'Factor ($\omega$)'))
-
-    for eta in target_eta:
-        label_str = r"$\omega={}$".format(eta)
-        patch = mpatches.Patch(facecolor=eta_colors[eta], edgecolor='black', linewidth=1, label=label_str)
-        legend_handles.append(patch)
-
-    legend_handles.append(mpatches.Patch(visible=False, label=""))
-
-    legend_handles.append(mpatches.Patch(visible=False, label='Method'))
-
-    h_2nn = mpatches.Patch(facecolor='white', edgecolor='black', linestyle='--', linewidth=1.5, label='2NN (Dashed)')
-    legend_handles.append(h_2nn)
-
-    h_srf = mpatches.Patch(facecolor='white', edgecolor='black', linestyle='-', linewidth=1.5, label='SRF (Solid)')
-    legend_handles.append(h_srf)
-
-    legend_handles.append(mpatches.Patch(visible=False, label=""))
-
-    legend_handles.append(mpatches.Patch(visible=False, label='Average Performance'))
-
-    h_mean_2nn = mlines.Line2D([], [], color=line_2nn_color, linestyle='-.', label=f'2NN Mean ({mean_2nn:.1%})')
-    legend_handles.append(h_mean_2nn)
-
-    h_mean_srf = mlines.Line2D([], [], color=line_srf_color, linestyle='--', label=f'SRF Mean ({mean_srf:.1%})')
-    legend_handles.append(h_mean_srf)
-
-    ax.legend(
-        handles=legend_handles,
-        loc='center left',
-        bbox_to_anchor=(1.0, 0.5),
-        frameon=False,
-        fontsize=12,
-        labelspacing=0.6,
-        borderaxespad=0
-    )
-
-    plt.tight_layout()
-
-    if not os.path.exists(folder_path): os.makedirs(folder_path)
-    save_path = os.path.join(folder_path, f"{file_name}.pdf")
-    fig.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"Portfolio results saved: {save_path}")
+def save_figure(fig, folder_path, file_name_no_ext):
+    os.makedirs(folder_path, exist_ok=True)
+    for extension in output_formats:
+        save_path = os.path.join(folder_path, f'{file_name_no_ext}.{extension}')
+        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f'Saved to {save_path}')
     plt.close(fig)
 
-def Boxplot_DRO(df, folder_path, file_name_no_ext, compared_models):
 
-    cols = ['Parameters', 'Instance'] + ALL_DRO_MODELS
-    valid_cols = [c for c in cols if c in df.columns]
-    data = df[valid_cols].copy()
+def performance_limits(values):
+    values = pd.Series(values).replace([float('inf'), -float('inf')], float('nan')).dropna()
+    if values.empty:
+        return -1.0, 1.0
+    return min(-1.0, math.floor(values.min() * 4) / 4), max(1.0, math.ceil(values.max() * 4) / 4)
+
+
+def set_performance_axis(ax, limits, tick_step=0.25):
+    lower, upper = limits
+    ax.set_ylim(lower - 0.05, upper + 0.05)
+    ax.set_yticks([i * tick_step for i in range(math.ceil(lower / tick_step),
+                                               math.floor(upper / tick_step) + 1)])
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0))
+
+
+def prepare_comparison_data(df):
+    data = df.copy()
+    # The workbook stores eta in Parameters; figure labels retain omega.
+    eta_column = 'eta' if 'eta' in data.columns else 'Parameters'
+    data['eta'] = pd.to_numeric(data[eta_column], errors='raise')
+    data = data.loc[data['eta'].isin(omega_values)].copy()
+    keys = ['n_m', 'eta', 'Instance']
+    if data[keys].isna().any().any():
+        raise ValueError('Missing Portfolio comparison case keys.')
+    if data.duplicated(keys).any():
+        raise ValueError('Duplicate Portfolio (n_m, eta, Instance) cases.')
+    return data
+
+
+def Boxplot_DRO(df, folder_path, file_name_no_ext, compared_models, axis_limits=None):
+
+    data = prepare_comparison_data(df)
+    if data.empty:
+        return
+    if data['n_m'].nunique() != 1:
+        raise ValueError('Each Portfolio DRO figure must contain one n_m.')
+    data = data[['eta', 'Instance'] + compared_models].copy()
+    eta_values = sorted(data['eta'].unique())
 
     data_melt = pd.melt(
         data,
-        id_vars=['Parameters', 'Instance'],
-        value_vars=[m for m in ALL_DRO_MODELS if m in valid_cols],
+        id_vars=['eta', 'Instance'],
+        value_vars=compared_models,
         var_name='Model',
         value_name='Performance'
     )
 
-    data_melt = data_melt[data_melt['Model'].isin(compared_models)]
     data_melt['Performance'] = data_melt['Performance'] / 100.0
+    data_melt = data_melt.dropna(subset=['Performance'])
+    if data_melt.empty:
+        return
 
     fig, ax = plt.subplots(figsize=(14, 7))
 
@@ -209,7 +114,8 @@ def Boxplot_DRO(df, folder_path, file_name_no_ext, compared_models):
 
     sns.boxplot(
         data=data_melt,
-        x='Parameters',
+        x='eta',
+        order=eta_values,
         y='Performance',
         hue='Model',
         hue_order=compared_models,
@@ -226,11 +132,13 @@ def Boxplot_DRO(df, folder_path, file_name_no_ext, compared_models):
         patch.set_linewidth(1.0)
         patch.set_linestyle('-')
 
-    ax.set_xlabel('Factor ($\omega$)', fontsize=16)
+    ax.set_xlabel(r'Factor ($\omega$)', fontsize=16)
     ax.set_ylabel('Out-of-sample Performance', fontsize=16)
 
-    ax.set_ylim(-1.05, 1.05)
-    ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0))
+    set_performance_axis(ax, axis_limits if axis_limits is not None
+                          else performance_limits(data_melt['Performance']))
+    ax.set_xticks(range(len(eta_values)))
+    ax.set_xticklabels([f'{eta:g}' for eta in eta_values])
     ax.tick_params(labelsize=13)
 
     legend_handles = []
@@ -249,43 +157,87 @@ def Boxplot_DRO(df, folder_path, file_name_no_ext, compared_models):
         loc='center left',
         bbox_to_anchor=(1.02, 0.5),
         frameon=False,
-        fontsize=11,
-        title="DRO Models"
+        fontsize=11
     )
 
     plt.tight_layout()
 
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
-
-    save_path = os.path.join(folder_path, f"{file_name_no_ext}.pdf")
-    fig.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"DRO Comparison plot saved: {save_path}")
-    plt.close(fig)
+    save_figure(fig, folder_path, file_name_no_ext)
 
 
-if __name__ == "__main__":
-    for problem in problems:
+def Boxplot_Smooth(df, folder_path, file_name_no_ext):
+    data = prepare_comparison_data(df.loc[df['n_m'].isin(smooth_nm_values)])
+    missing = [column for column in Compared_Smooth_models if column not in data.columns]
+    if missing:
+        raise ValueError(f'Missing columns for Portfolio Smooth comparison: {missing}')
+    # Compare the four methods on the same available trading dates.
+    data = data.dropna(subset=Compared_Smooth_models)
+    if data.empty:
+        print('Skip Smooth comparison: no available cases.')
+        return
+    nm_values = sorted(data['n_m'].unique())
+    eta_values = sorted(data['eta'].unique())
+    limits = performance_limits(data[Compared_Smooth_models].to_numpy().ravel() / 100)
+    fig, axes = plt.subplots(len(nm_values), 1,
+                             figsize=(14, 3.5 * len(nm_values) + 1), squeeze=False)
+    for row, n_m in enumerate(nm_values):
+        ax = axes[row, 0]
+        for eta_index, eta in enumerate(eta_values):
+            group = data[(data['n_m'] == n_m) & (data['eta'] == eta)]
+            for method_index, method in enumerate(Compared_Smooth_models):
+                values = group[method] / 100.0
+                if values.empty:
+                    continue
+                artists = ax.boxplot(
+                    values, positions=[eta_index + (method_index - 1.5) * 0.18],
+                    widths=0.15, patch_artist=True, manage_ticks=False,
+                    boxprops={'facecolor': MODEL_COLOR_MAP[method], 'edgecolor': 'black',
+                              'linewidth': 1, 'hatch': SMOOTH_HATCH_MAP[method]},
+                    medianprops={'color': 'black', 'linewidth': 1},
+                    whiskerprops={'color': 'black', 'linewidth': 0.9},
+                    capprops={'color': 'black', 'linewidth': 0.9},
+                    flierprops={'marker': 'o', 'markersize': 1.8, 'markeredgecolor': 'black'})
+                artists['boxes'][0].set_gid(f'nm{n_m:g}_eta{eta:g}_{method}')
+        ax.set_xticks(range(len(eta_values)))
+        ax.set_xticklabels([f'{eta:g}' for eta in eta_values], fontsize=14)
+        ax.set_xlim(-0.55, len(eta_values) - 0.45)
+        ax.set_ylabel('Out-of-sample Performance\n' + f'($n_m={n_m:g}$)', fontsize=14)
+        set_performance_axis(ax, limits, tick_step=0.5)
+        ax.tick_params(axis='y', labelsize=12)
+        ax.grid(False, axis='x')
+        for boundary in range(len(eta_values) - 1):
+            ax.axvline(boundary + 0.5, color='white', linewidth=1.5)
+    axes[-1, 0].set_xlabel(r'Factor ($\omega$)', fontsize=16, labelpad=10)
+    handles = [mpatches.Patch(facecolor=MODEL_COLOR_MAP[method], edgecolor='black',
+                              hatch=SMOOTH_HATCH_MAP[method],
+                              label=method.replace('P_', '')) for method in Compared_Smooth_models]
+    fig.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.54, 0.995),
+               ncol=4, frameon=False, fontsize=13)
+    fig.subplots_adjust(left=0.105, right=0.99,
+                        top=0.88 if len(nm_values) == 1 else 0.94,
+                        bottom=0.08, hspace=0.25)
+    save_figure(fig, folder_path, file_name_no_ext)
 
-        if show_results == True:
 
-            # Please ensure that this file exists
-            read_file_path = f'../Outputs/Outputs_CSDRO/DRO_{problem}_all_results.xlsx'
+def plot_comparison(df):
+    data = prepare_comparison_data(df)
+    if data.empty:
+        print('Skip Portfolio comparison: no cases after filtering omega.')
+        return
+    folder = os.path.join(PROJECT_DIR, 'Outputs/Outputs_Visualization/Portfolio_visualizations')
+    if show_dro_comparison:
+        # Use one common vertical scale across n_m, including recorded outliers.
+        limits = performance_limits(data[Compared_DRO_models].to_numpy().ravel() / 100)
+        for n_m, group in data.groupby('n_m', sort=True):
+            Boxplot_DRO(group, folder, f'Portfolio_DRO_Comparison_Boxplot_nm{n_m:g}',
+                        Compared_DRO_models, axis_limits=limits)
+    if show_smooth_comparison:
+        Boxplot_Smooth(data, folder, 'Portfolio_Smooth_Comparison_Boxplot_All_omega_nm')
 
-            output_folder_path = f'../Outputs/Outputs_Visualization/{problem}_visualizations'
-            output_file = f"{problem}_Results_Boxplot."
 
-            df_pf = pd.read_excel(read_file_path, engine='openpyxl')
-
-            Boxplot_2NN_and_SRF(df_pf, output_folder_path, output_file)
-
-        if show_dro_comparison == True:
-            read_file_path = f'../Outputs/Outputs_DRO_Comparison/DRO_Compare_{problem}_results.xlsx'
-            output_folder_path = f'../Outputs/Outputs_Visualization/{problem}_visualizations'
-            output_file = f"{problem}_DRO_Comparison_Boxplot"
-
-            if os.path.exists(read_file_path):
-                df_dro = pd.read_excel(read_file_path, engine='openpyxl')
-                Boxplot_DRO(df_dro, output_folder_path, output_file, Compared_DRO_models)
-            else:
-                print(f"Comparison file missing: {read_file_path}")
+if __name__ == '__main__':
+    if show_dro_comparison or show_smooth_comparison:
+        result_path = os.path.join(PROJECT_DIR,
+                      'Outputs/Outputs_DRO_Comparison/DRO_Compare_Portfolio_results.xlsx')
+        print(f'Portfolio comparison data: {result_path}')
+        plot_comparison(pd.read_excel(result_path, sheet_name='All_Results'))

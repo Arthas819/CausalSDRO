@@ -57,7 +57,8 @@ def plot_fit_visualization_newsvendor(data_gen, X_train, Y_train, models_dict, p
     beta_coeff = data_gen.BETA_COEFF
 
     # Project data to 1D
-    X_train_proj = (X_train @ beta_coeff).cpu().numpy().squeeze()
+    X_raw = X_train * data_gen.X_train_std + data_gen.X_train_mean
+    X_train_proj = (X_raw @ beta_coeff).cpu().numpy().reshape(-1)
     Y_train_np = Y_train.cpu().numpy().squeeze()
 
     # Sort for plotting lines
@@ -74,15 +75,22 @@ def plot_fit_visualization_newsvendor(data_gen, X_train, Y_train, models_dict, p
     plt.scatter(X_train_proj, Y_train_np, alpha=0.2, label='Training Data Points ', s=10, zorder=5)
 
     # Plot true conditional mean and noise band
-    with torch.no_grad():
-        beta_x = X_train_sorted @ beta_coeff
-        Y_true_mean = f_true_func(beta_x).cpu().numpy().squeeze()
+    location = f_true_func(X_raw[sort_indices] @ beta_coeff).reshape(-1)
+    sigma = data_gen.sigma
+    if sigma > 0:
+        # Mean and standard deviation after discarding nonpositive demands.
+        t = location / sigma
+        ratio = torch.exp(-0.5 * t.square()) / (np.sqrt(2 * np.pi) * torch.special.ndtr(t))
+        Y_true_mean = (location + sigma * ratio).cpu().numpy()
+        Y_true_std = (sigma * (1 - t * ratio - ratio.square()).clamp_min(0).sqrt()).cpu().numpy()
+    else:
+        Y_true_mean, Y_true_std = location.cpu().numpy(), 0.0
 
     # zorder=4 (Second highest layer)
     plt.plot(X_train_proj_sorted, Y_true_mean, color='blue', linestyle='--', label='True Conditional Mean',
              zorder=4)
     # zorder=3 (Third highest layer, above fitted curves)
-    plt.fill_between(X_train_proj_sorted, Y_true_mean - 1.0, Y_true_mean + 1.0,
+    plt.fill_between(X_train_proj_sorted, Y_true_mean - Y_true_std, Y_true_mean + Y_true_std,
                      color='blue', alpha=0.1, label='True Noise Band (±1 std)', zorder=3)
 
     # Plot fitted models from all methods

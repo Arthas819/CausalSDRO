@@ -4,7 +4,7 @@
 
 import torch.optim as optim
 from tqdm import tqdm
-from CausalSDRO.Tools.Functions import *
+from Tools.Functions import *
 
 
 '''
@@ -28,13 +28,18 @@ class ERM_Trainer:
         self.train_loss_history = []
 
     # Train ERM model
-    def train_erm(self, X_train, Y_train, pro_params):
+    def train_erm(self, X_train, Y_train, pro_params, progress=True,
+                  checkpoint_callback=None, checkpoint_every=100):
+        if pro_params['problem_name'] == 'Inventory':
+            self.model.configure_inventory(pro_params)
         self.n_train = X_train.shape[0]
         self.pro_params = pro_params
         self.d_z = pro_params['dimension'][2]
 
         # Set a bar
-        pbar_saa = tqdm(range(self.epochs), desc=f"Training ERM ({self.model_type})", leave=False)
+        step = 0
+        pbar_saa = tqdm(range(self.epochs), desc=f"Training ERM ({self.model_type})",
+                       leave=False, disable=not progress)
         # Update parameters by SAA
         for epoch in pbar_saa:
             # Load batches
@@ -50,6 +55,10 @@ class ERM_Trainer:
 
                 # update parameters
                 self.optimizer.step()
+                step += 1
+                if checkpoint_callback is not None and step % checkpoint_every == 0:
+                    if checkpoint_callback(self.model, step) is False:
+                        return self.model, self.train_loss_history
 
                 # update the tqdm
                 if (epoch + 1) % 20 == 0:
@@ -66,6 +75,8 @@ class ERM_Trainer:
                     self.train_loss_history.append(eval_loss.item())
                     pbar_saa.set_postfix(TestDRO=eval_loss.item())
 
+        if checkpoint_callback is not None and step % checkpoint_every:
+            checkpoint_callback(self.model, step)
         return self.model, self.train_loss_history
 
     # Get loss during training
@@ -82,11 +93,10 @@ class ERM_Trainer:
             loss = newsvendor_loss(z, Y_train, self.pro_params['h_cost'], self.pro_params['b_cost'])
 
         elif self.pro_params['problem_name'] == 'Portfolio':
-            z_decision, beta = parse_mv_output(z, self.d_z)
-            loss = portfolio_loss_mv(z_decision, Y_train, beta, self.pro_params['eta'])
+            loss = get_loss(z, Y_train, self.pro_params)
 
         elif self.pro_params['problem_name'] == 'Inventory':
-            loss = DifferentiableGurobiSolver.apply(z, Y_train, self.pro_params)
+            loss = get_loss(z, Y_train, self.pro_params)
 
         return loss.mean()
 
@@ -113,12 +123,11 @@ class ERM_Trainer:
 
         elif self.pro_params['problem_name'] == 'Portfolio':
             with torch.no_grad():
-                z_decision, beta = parse_mv_output(z, self.d_z)
-                loss = portfolio_loss_mv(z_decision, Y_eval, beta, self.pro_params['eta'])
+                loss = get_loss(z, Y_eval, self.pro_params)
 
         elif self.pro_params['problem_name'] == 'Inventory':
             with torch.no_grad():
-                loss = DifferentiableGurobiSolver.apply(z, Y_eval, self.pro_params)
+                loss = get_loss(z, Y_eval, self.pro_params)
 
          # Return mean loss as a tensor
         return loss.mean()

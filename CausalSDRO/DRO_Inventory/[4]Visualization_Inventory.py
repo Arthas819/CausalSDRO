@@ -1,5 +1,5 @@
 """
-    This file visualizes all numerical results.
+    Visualize the DRO and smoothing comparisons.
 """
 
 import pandas as pd
@@ -10,33 +10,38 @@ import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
 import os
 
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # Basic settings
 problems = ['Inventory']
 
-show_results = True
 show_dro_comparison = True
+show_smooth_comparison = True
+output_formats = ('pdf', 'svg')
+plot_dx_values = [3, 5, 10]
+smooth_nm_values = [5, 10]
 
-# If show_results == True
+# Decision-rule colors used when [2] plots its results.
 CUSTOM_COLORS = ["#E69F00", "#56B4E9", "#009E73", "#CC79A7"]
 
 # If show_dro_comparison == True
 # Select compared models in the boxplots
 Compared_DRO_models = ['P_1-Causal-SDRO', 'P_2-Causal-SDRO', 'P_1-SDRO', 'P_2-SDRO',
     'P_1-Causal-WDRO', 'P_2-Causal-WDRO', 'P_KL-DRO']
+Compared_Smooth_models = ['P_1-Causal-SDRO', 'P_2-Causal-SDRO', 'P_1-Smooth', 'P_2-Smooth']
+SMOOTH_HATCH_MAP = {model: '///' if 'Causal-SDRO' in model else ''
+                    for model in Compared_Smooth_models}
 
 CUSTOM_COLORS_DRO = [
     "#E69F00", "#56B4E9", "#009E73", "#F0E442",
-    "#0072B2", "#D55E00", "#CC79A7"
+    "#0072B2", "#D55E00", "#CC79A7", "#00B050", "#E7298A"
 ]
 ALL_DRO_MODELS = [
     'P_1-Causal-SDRO', 'P_2-Causal-SDRO', 'P_1-SDRO', 'P_2-SDRO',
-    'P_1-Causal-WDRO', 'P_2-Causal-WDRO', 'P_KL-DRO'
+    'P_1-Causal-WDRO', 'P_2-Causal-WDRO', 'P_KL-DRO', 'P_1-Smooth', 'P_2-Smooth'
 ]
 # Construct a mapping dict
 MODEL_COLOR_MAP = dict(zip(ALL_DRO_MODELS, CUSTOM_COLORS_DRO))
-
-fixed_n = 400
-fixed_dx = 20
 
 p_norms = [1, 2]
 sns.set_theme(style="darkgrid", context="talk", font_scale=1.1)
@@ -44,6 +49,34 @@ plt.rcParams['font.sans-serif'] = ['Arial']
 plt.rcParams['axes.unicode_minus'] = False
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
+
+
+def save_figure(fig, folder_path, file_name_no_ext):
+    os.makedirs(folder_path, exist_ok=True)
+    for extension in output_formats:
+        save_path = os.path.join(folder_path, f'{file_name_no_ext}.{extension}')
+        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f'Saved to {save_path}')
+    plt.close(fig)
+
+
+def bounded_plot_data(df, columns):
+    """Bound displayed P values; retain the original workbook and loss estimates."""
+    data = df.copy()
+    values = data[columns]
+    outside = values.lt(-100) | values.gt(100)
+    if outside.any().any():
+        counts = outside.sum()
+        print('Plotting P clipped to [-100, 100] (source unchanged):',
+              counts[counts > 0].to_dict())
+    data[columns] = values.replace([float('inf'), -float('inf')], float('nan')).clip(-100, 100)
+    return data
+
+
+def set_performance_axis(ax):
+    ax.set_ylim(-1.05, 1.05)
+    ax.set_yticks([value / 100 for value in range(-100, 101, 25)])
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0))
 
 
 def prepare_data(df):
@@ -58,8 +91,8 @@ def prepare_data(df):
 
     df_comp['Method'] = df_comp['Model'].apply(clean_name)
 
-    target_N = [100, 200, 400, 800]
-    target_Dx = [3, 5, 10, 20]
+    target_N = [20, 40, 80, 100]
+    target_Dx = plot_dx_values
     df_comp = df_comp[df_comp['N'].isin(target_N) & df_comp['D_X'].isin(target_Dx)]
 
     if df_comp.empty: return None
@@ -72,9 +105,10 @@ def Boxplot_2NN_and_SRF(df, folder_path, file_name_no_ext):
     data = prepare_data(df)
     if data is None: return
 
+    data = bounded_plot_data(data, ['Prescriptiveness'])
     data['Prescriptiveness'] = data['Prescriptiveness'] / 100.0
 
-    target_Dx = [3, 5, 10, 20]
+    target_Dx = plot_dx_values
 
     dx_colors = {dx: color for dx, color in zip(target_Dx, CUSTOM_COLORS)}
 
@@ -112,7 +146,7 @@ def Boxplot_2NN_and_SRF(df, folder_path, file_name_no_ext):
         patch.set_linewidth(1.2)
         patch.set_hatch(None)
 
-        intra_group_index = i % 8
+        intra_group_index = i % len(hue_order)
 
         if intra_group_index % 2 == 0:
             # 2NN
@@ -132,8 +166,7 @@ def Boxplot_2NN_and_SRF(df, folder_path, file_name_no_ext):
 
     ax.set_xlabel('Sample Size (N)', fontsize=16)
     ax.set_ylabel('Out-of-sample Performance', fontsize=16)
-    ax.set_ylim(-1.05, 1.05)
-    ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0))
+    set_performance_axis(ax)
     ax.tick_params(labelsize=13)
 
     legend_handles = []
@@ -177,19 +210,15 @@ def Boxplot_2NN_and_SRF(df, folder_path, file_name_no_ext):
 
     plt.tight_layout()
 
-    fig_dir = folder_path
-    if not os.path.exists(fig_dir): os.makedirs(fig_dir)
-    save_path = os.path.join(folder_path, f"{file_name_no_ext}.pdf")
-    fig.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"Save to {save_path}")
-    plt.close(fig)
+    save_figure(fig, folder_path, file_name_no_ext)
 
 
-def Boxplot_DRO(df, folder_path, file_name_no_ext, fixed_n, fixed_dx, compared_models):
+def Boxplot_DRO(df, folder_path, file_name_no_ext, compared_models):
 
+    df = df[df['D_X'].isin(plot_dx_values)].copy()
     cols = ['N', 'D_X', 'Instance'] + ALL_DRO_MODELS
     valid_cols = [c for c in cols if c in df.columns]
-    data = df[valid_cols].copy()
+    data = bounded_plot_data(df[valid_cols], [m for m in compared_models if m in valid_cols])
 
     data_melt = pd.melt(
         data,
@@ -201,6 +230,7 @@ def Boxplot_DRO(df, folder_path, file_name_no_ext, fixed_n, fixed_dx, compared_m
 
     data_melt = data_melt[data_melt['Model'].isin(compared_models)]
     data_melt['Performance'] = data_melt['Performance'] / 100.0
+    data_melt = data_melt.dropna(subset=['Performance'])
 
     def draw_single_boxplot(plot_data, x_col, x_label, file_suffix):
         if plot_data.empty:
@@ -232,8 +262,7 @@ def Boxplot_DRO(df, folder_path, file_name_no_ext, fixed_n, fixed_dx, compared_m
 
         ax.set_xlabel(x_label, fontsize=16)
         ax.set_ylabel('Out-of-sample Performance', fontsize=16)
-        ax.set_ylim(-1.05, 1.05)
-        ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0))
+        set_performance_axis(ax)
         ax.tick_params(labelsize=13)
 
         legend_handles = []
@@ -247,52 +276,126 @@ def Boxplot_DRO(df, folder_path, file_name_no_ext, fixed_n, fixed_dx, compared_m
             loc='center left',
             bbox_to_anchor=(1.02, 0.5),
             frameon=False,
-            fontsize=10,
-            title="Methods"
+            fontsize=10
         )
 
         plt.tight_layout()
 
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-        save_path = os.path.join(folder_path, f"{file_name_no_ext}_{file_suffix}.pdf")
-        fig.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Saved to {save_path}")
-        plt.close(fig)
+        save_figure(fig, folder_path, f'{file_name_no_ext}_{file_suffix}')
 
-    df_fixed_n = data_melt[data_melt['N'] == fixed_n].copy()
-    df_fixed_n.sort_values(by='D_X', inplace=True)
-    draw_single_boxplot(df_fixed_n, 'D_X', 'Covariate Dimension ($d_x$)', f"Fixed_N_{fixed_n}")
+    for dx in sorted(df['D_X'].dropna().unique()):
+        df_fixed_dx = data_melt[data_melt['D_X'] == dx].sort_values(by='N')
+        draw_single_boxplot(df_fixed_dx, 'N', 'Sample Size ($N$)',
+                            f'Fixed_Dx_{dx:g}')
 
-    df_fixed_dx = data_melt[data_melt['D_X'] == fixed_dx].copy()
-    df_fixed_dx.sort_values(by='N', inplace=True)
-    draw_single_boxplot(df_fixed_dx, 'N', 'Sample Size ($N$)', f"Fixed_Dx_{fixed_dx}")
 
-if __name__ == "__main__":
-    for problem in problems:
-        if show_results == True:
+def Boxplot_Smooth(df, folder_path, file_name_no_ext):
+    """One row per selected n_m; hatching distinguishes Causal-SDRO from Smooth."""
+    required = ['N', 'D_X', 'n_m', 'Instance'] + Compared_Smooth_models
+    missing = [column for column in required if column not in df.columns]
+    if missing:
+        raise ValueError(f'Missing columns for Smooth comparison: {missing}')
+    data = df.loc[df['D_X'].isin(plot_dx_values) & df['n_m'].isin(smooth_nm_values),
+                  required].copy()
+    data = bounded_plot_data(data, Compared_Smooth_models)
+    # Keep all four methods paired on the same available experimental instances.
+    data = data.dropna(subset=Compared_Smooth_models)
+    nm_values = sorted(data['n_m'].dropna().unique())
+    n_values = sorted(data['N'].dropna().unique())
+    dx_values = sorted(data['D_X'].dropna().unique())
+    if data.empty:
+        print('Skip Smooth comparison: no available cases.')
+        return
 
-            # Please ensure that this file exists
-            read_file_path = f'../Outputs/Outputs_CSDRO/DRO_{problem}_all_results.xlsx'
+    fig, axes = plt.subplots(len(nm_values), 1,
+                             figsize=(18, 3.5 * len(nm_values) + 1), squeeze=False)
+    dimension_width = 0.84 / len(dx_values)
+    method_spacing = 0.20 * dimension_width
+    box_width = 0.17 * dimension_width
+    for row, n_m in enumerate(nm_values):
+        ax = axes[row, 0]
+        for n_index, n in enumerate(n_values):
+            for dx_index, dx in enumerate(dx_values):
+                center = n_index + (dx_index - (len(dx_values) - 1) / 2) * dimension_width
+                group = data[(data['n_m'] == n_m) & (data['N'] == n) & (data['D_X'] == dx)]
+                for method_index, method in enumerate(Compared_Smooth_models):
+                    values = group[method] / 100.0
+                    if values.empty:
+                        continue
+                    artists = ax.boxplot(
+                        values, positions=[center + (method_index - 1.5) * method_spacing],
+                        widths=box_width, patch_artist=True, manage_ticks=False,
+                        boxprops={'facecolor': MODEL_COLOR_MAP[method], 'edgecolor': 'black',
+                                  'linewidth': 1, 'hatch': SMOOTH_HATCH_MAP[method]},
+                        medianprops={'color': 'black', 'linewidth': 1},
+                        whiskerprops={'color': 'black', 'linewidth': 0.9},
+                        capprops={'color': 'black', 'linewidth': 0.9},
+                        flierprops={'marker': 'o', 'markersize': 1.8, 'markeredgecolor': 'black'})
+                    artists['boxes'][0].set_gid(f'nm{n_m:g}_N{n:g}_dx{dx:g}_{method}')
+                ax.text(center, -0.055, f'$d_x={dx:g}$', transform=ax.get_xaxis_transform(),
+                        ha='center', va='top', fontsize=11)
+        ax.set_xticks(range(len(n_values)))
+        ax.set_xticklabels([f'{n:g}' for n in n_values], fontsize=14)
+        ax.tick_params(axis='x', pad=30)
+        ax.set_xlim(-0.55, len(n_values) - 0.45)
+        ax.set_ylabel('Out-of-sample Performance\n' + f'($n_m={n_m:g}$)', fontsize=14)
+        ax.set_ylim(-1.05, 1.05)
+        ax.set_yticks([-1, -0.5, 0, 0.5, 1])
+        ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0))
+        ax.tick_params(axis='y', labelsize=12)
+        ax.grid(False, axis='x')
+        for boundary in range(len(n_values) - 1):
+            ax.axvline(boundary + 0.5, color='white', linewidth=1.5)
+    axes[-1, 0].set_xlabel('Sample Size ($N$)', fontsize=16, labelpad=10)
+    handles = [mpatches.Patch(facecolor=MODEL_COLOR_MAP[method], edgecolor='black',
+                              hatch=SMOOTH_HATCH_MAP[method],
+                              label=method.replace('P_', '')) for method in Compared_Smooth_models]
+    fig.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.54, 0.995),
+               ncol=4, frameon=False, fontsize=13)
+    fig.subplots_adjust(left=0.08, right=0.99, top=0.94, bottom=0.10, hspace=0.40)
+    save_figure(fig, folder_path, file_name_no_ext)
 
-            df = pd.read_excel(read_file_path, engine='openpyxl')
+def plot_results(df):
+    folder = os.path.join(PROJECT_DIR, 'Outputs/Outputs_Visualization/Inventory_visualizations')
+    groups = df.groupby('n_m', sort=True) if 'n_m' in df else [(None, df)]
+    for n_m, group in groups:
+        suffix = '' if n_m is None else f'_nm{n_m:g}'
+        for p in p_norms:
+            Boxplot_2NN_and_SRF(group[group['Norm'] == p], folder, f'Inventory_Results_Boxplot_p{p}{suffix}')
 
-            for p in p_norms:
-                df_norm = df[df['Norm'] == p].copy()
 
-                output_folder_path = f'../Outputs/Outputs_Visualization/{problem}_visualizations'
-                output_file = f"{problem}_Results_Boxplot_p={p}"
+def merge_smoothing_results(df):
+    # Existing full-run smoothing columns take precedence over the separate file.
+    columns = ['F_1_Smooth', 'P_1-Smooth', 'F_2_Smooth', 'P_2-Smooth']
+    missing = [c for c in columns if c not in df.columns]
+    path = os.path.join(PROJECT_DIR,
+                        'Outputs/Outputs_DRO_Comparison/DRO_Compare_Inventory_results_smoothing.xlsx')
+    if missing and os.path.exists(path):
+        smooth = pd.read_excel(path)
+        keys = ['N', 'D_X', 'Instance', 'n_m']
+        df = df.merge(smooth[keys + missing], on=keys, how='left', validate='one_to_one')
+    return df
 
-                Boxplot_2NN_and_SRF(df_norm, output_folder_path, output_file)
 
-        if show_dro_comparison == True:
+def plot_comparison(df):
+    df = merge_smoothing_results(df)
+    df = df[df['D_X'].isin(plot_dx_values)].copy()
+    compared = [m for m in Compared_DRO_models if m in df.columns]
+    folder = os.path.join(PROJECT_DIR, 'Outputs/Outputs_Visualization/Inventory_visualizations')
+    incomplete = df[df[compared].isna().any(axis=1)]
+    if not incomplete.empty:
+        keys = ['N', 'D_X', 'n_m', 'Instance']
+        print('Missing performance values are omitted from plots:', incomplete[keys].to_dict('records'))
+    if show_dro_comparison:
+        for n_m in sorted(df['n_m'].dropna().unique()):
+            subset = df[df['n_m'] == n_m].copy()
+            Boxplot_DRO(subset, folder, f'Inventory_DRO_Comparison_Boxplot_nm{n_m:g}',
+                        compared)
+    if show_smooth_comparison:
+        Boxplot_Smooth(df, folder, 'Inventory_Smooth_Comparison_Boxplot_All_N_Dx_nm')
 
-            read_file_path = f'../Outputs/Outputs_DRO_Comparison/DRO_Compare_{problem}_results.xlsx'
 
-            output_folder_path = f'../Outputs/Outputs_Visualization/{problem}_visualizations'
-            output_file = f"{problem}_DRO_Comparison_Boxplot"
-
-            df = pd.read_excel(read_file_path, engine='openpyxl')
-
-            # Function name
-            Boxplot_DRO(df, output_folder_path, output_file, fixed_n, fixed_dx, Compared_DRO_models)
+if __name__ == '__main__':
+    if show_dro_comparison or show_smooth_comparison:
+        plot_comparison(pd.read_excel(os.path.join(PROJECT_DIR,
+                        'Outputs/Outputs_DRO_Comparison/DRO_Compare_Inventory_results.xlsx')))

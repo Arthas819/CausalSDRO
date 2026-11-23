@@ -4,8 +4,8 @@
 """
 
 from tqdm import tqdm
-from CausalSDRO.Tools.Functions import *
-from torch.autograd import Variable
+from Tools.Functions import *
+from torch.autograd import *
 
 class CWDRO_Trainer:
     def __init__(self, model, train_loader, params, device, model_type):
@@ -23,6 +23,10 @@ class CWDRO_Trainer:
         self.train_loss_history = []
 
     def train_rtmlmc(self, X_train, Y_train, pro_params):
+        if pro_params['problem_name'] == 'Portfolio':
+            self.epochs = self.params.EPOCHS_SCSC
+        if pro_params['problem_name'] == 'Inventory':
+            self.model.configure_inventory(pro_params)
         self.n_train = X_train.shape[0]
         self.d_x = X_train.shape[1]
         self.d_y = Y_train.shape[1]
@@ -43,7 +47,7 @@ class CWDRO_Trainer:
 
         # Basic settings
         acc_test_hist = []
-        theta_step_size0 = 0.09
+        theta_step_size0 = getattr(self.params, 'LR_CWDRO', 0.09)
 
         self.model.train()
         optimizer_theta = torch.optim.Adam(self.model.parameters(), amsgrad = True, lr=theta_step_size0)
@@ -52,7 +56,7 @@ class CWDRO_Trainer:
 
         # Update parameters by RT-MLMC
         for epoch in pbar_rtmlmc:
-            batch_size_inner = 2
+            batch_size_inner = getattr(self.params, 'CWDRO_BATCH_SIZE', 2)
             optimizer_theta.zero_grad()
             loss_adv_list = [self.RTMLMC_obj_oracle(X_train, Y_train, self.batch_size) for i in range(batch_size_inner)]
             loss_adv_mean   = torch.mean(torch.stack(loss_adv_list), dim=0)
@@ -75,12 +79,19 @@ class CWDRO_Trainer:
 
     def RTMLMC_obj_oracle(self, x_Tr, z_Tr, batch_size_z):
         # Input: X_train, Y_train, Batch_size
-        K_sample = int(np.random.choice(list(self.elements), 1, list(self.probabilities)))
+        K_sample = int(np.random.choice(self.elements, p=self.probabilities))
         x_Tr_size, _ = x_Tr.shape
         idx = np.random.randint(x_Tr_size)
 
         x_Tr_idx = x_Tr[idx:idx + 1, :]
         z_Tr_idx = z_Tr[idx:idx + 1, :]
+        if self.pro_params['problem_name'] in ('Newsvendor', 'Inventory', 'Portfolio'):
+            if self.pro_params['problem_name'] == 'Portfolio' and 'group_index' in self.pro_params:
+                group_index = self.pro_params['group_index']
+                z_Tr_idx = z_Tr[group_index == group_index[idx]]
+            else:
+                z_Tr_idx = z_Tr[(x_Tr == x_Tr_idx).all(dim=1)]
+            return self.group_oracle(x_Tr_idx, z_Tr_idx, K_sample)
 
         train_data_z_Tr = torch.utils.data.TensorDataset(z_Tr_idx.float())
         train_data_loader_z = torch.utils.data.DataLoader(train_data_z_Tr, batch_size=batch_size_z, shuffle=True)
@@ -98,6 +109,47 @@ class CWDRO_Trainer:
 
         loss_adv = torch.mean(loss_y10) + 1/self.probabilities[K_sample-1] * (torch.mean(loss_yK10) - torch.mean(loss_yK0))
         return loss_adv
+
+    def group_oracle(self, x_hat, y_hat, K_sample):
+        # One shared perturbed x per group and one perturbed y per observation.
+        # RT-MLMC telescopes levels 0,...,5; level 0 is the historical observation.
+        x = x_hat.detach().clone()
+        y = y_hat.detach().clone()
+        x_low, y_low = x, y
+        norm = self.pro_params['norm']
+        for k in range(K_sample):
+            if k == K_sample - 1:
+                x_low, y_low = x.detach(), y.detach()
+            step = getattr(self.params, 'LR_CWDRO_INNER', 0.5) / (2 ** (k + 1))
+            x_average = torch.zeros_like(x)
+            y_average = torch.zeros_like(y)
+            for j in range(2 ** k):
+                x = x.detach().requires_grad_(True)
+                y = y.detach().requires_grad_(True)
+                loss = get_loss(self.model(x).reshape(1, self.d_z), y, self.pro_params).mean()
+                grad_x, grad_y = torch.autograd.grad(loss, (x, y))
+                with torch.no_grad():
+                    dx = x + step * grad_x - x_hat
+                    dy = y + step * len(y_hat) * grad_y - y_hat
+                    # Proximal ascent for the actual p-transport penalty.
+                    if norm == 1:
+                        dx = dx.sign() * (dx.abs() - step * self.lam).clamp_min(0)
+                        dy = dy.sign() * (dy.abs() - step * self.lam).clamp_min(0)
+                    else:
+                        dx = dx / (1 + 2 * step * self.lam)
+                        dy = dy / (1 + 2 * step * self.lam)
+                    x, y = x_hat + dx, y_hat + dy
+                    if self.pro_params['problem_name'] == 'Inventory':
+                        y = y.clamp_min(0)
+                    x_average += (x - x_average) / (j + 1)
+                    y_average += (y - y_average) / (j + 1)
+            x, y = x_average, y_average
+
+        # Perturbations are detached: the outer update uses the envelope gradient.
+        loss_base = get_loss(self.model(x_hat).reshape(1, self.d_z), y_hat, self.pro_params).mean()
+        loss_low = get_loss(self.model(x_low).reshape(1, self.d_z), y_low, self.pro_params).mean()
+        loss_high = get_loss(self.model(x).reshape(1, self.d_z), y, self.pro_params).mean()
+        return loss_base + (loss_high - loss_low) / self.probabilities[K_sample - 1]
 
     def epoch_SGD_revision(self, train_data_loader, x_Tr, y_hat0, model, K_sample, Lambda, y_step_size0,
                            beta0, z_Tr_idx):
@@ -156,12 +208,11 @@ class CWDRO_Trainer:
 
         elif self.pro_params['problem_name'] == 'Portfolio':
             with torch.no_grad():
-                z_decision, beta = parse_mv_output(z, self.d_z)
-                loss = portfolio_loss_mv(z_decision, Y_eval, beta, self.pro_params['eta'])
+                loss = get_loss(z, Y_eval, self.pro_params)
 
         elif self.pro_params['problem_name'] == 'Inventory':
             with torch.no_grad():
-                loss = DifferentiableGurobiSolver.apply(z, Y_eval, self.pro_params)
+                loss = get_loss(z, Y_eval, self.pro_params)
 
          # Return mean loss as a tensor
         return loss.mean()
